@@ -10,8 +10,6 @@ import org.json.JSONObject;
 import android.app.Activity;
 import android.app.ProgressDialog;
 import android.content.Context;
-import android.content.DialogInterface;
-import android.content.DialogInterface.OnDismissListener;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -31,6 +29,7 @@ import android.widget.TextView;
 
 import com.andy.howold.FaceDetect.Callback;
 import com.andy.utils.L;
+import com.andy.utils.toastMgr;
 import com.facepp.error.FaceppParseException;
 
 public class MainActivity extends Activity implements OnClickListener
@@ -51,6 +50,9 @@ public class MainActivity extends Activity implements OnClickListener
 	// 在bitmap上画人脸框
 	private Canvas mCanvas;
 	private Paint mPaint;
+
+	// 检测进度条
+	private ProgressDialog pdDialog;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState)
@@ -171,20 +173,12 @@ public class MainActivity extends Activity implements OnClickListener
 			startActivityForResult(intent, PICK_PHOTO_CODE);
 			break;
 		case R.id.detect:
-			ProgressDialog pdDialog = new ProgressDialog(mContext);
+			pdDialog = new ProgressDialog(mContext);
 			pdDialog.setTitle("正在检测....");
-			pdDialog.setCancelable(true);
+			pdDialog.setCancelable(false);// 不可取消
 			pdDialog.setCanceledOnTouchOutside(false);
-			pdDialog.setOnDismissListener(new OnDismissListener()
-			{
+			pdDialog.show();
 
-				@Override
-				public void onDismiss(DialogInterface dialog)
-				{
-					// TODO Auto-generated method stub
-
-				}
-			});
 			FaceDetect faceDetect = new FaceDetect();
 			faceDetect.detect(mPhotoImage, new Callback()
 			{
@@ -220,6 +214,8 @@ public class MainActivity extends Activity implements OnClickListener
 		{
 			if (msg.what == DETECT_SUCCESS)
 			{
+				pdDialog.dismiss();
+				toastMgr.builder.display("检测成功", 1);
 				JSONObject resultJson = (JSONObject) msg.obj;
 				L.i(resultJson.toString());
 				tv_state.setText("click to detect===>");
@@ -228,7 +224,8 @@ public class MainActivity extends Activity implements OnClickListener
 			}
 			else if (msg.what == DETECT_FAIL)
 			{
-
+				pdDialog.dismiss();
+				toastMgr.builder.display("检测失败", 1);
 			}
 		}
 
