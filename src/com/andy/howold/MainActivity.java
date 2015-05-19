@@ -3,12 +3,21 @@ package com.andy.howold;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 
+import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import android.app.Activity;
+import android.app.ProgressDialog;
+import android.content.Context;
+import android.content.DialogInterface;
+import android.content.DialogInterface.OnDismissListener;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -21,6 +30,7 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 import com.andy.howold.FaceDetect.Callback;
+import com.andy.utils.L;
 import com.facepp.error.FaceppParseException;
 
 public class MainActivity extends Activity implements OnClickListener
@@ -33,8 +43,14 @@ public class MainActivity extends Activity implements OnClickListener
 	private Button btn_detect;
 	private TextView tv_state;
 	private ImageView mPhoto;//
-	private Bitmap mPhotoImage;// Õº∆¨
+	private Bitmap mPhotoImage;//
 	private String mCurrentPhotoString;
+
+	private Context mContext;
+
+	// Âú®bitmap‰∏äÁîª‰∫∫ËÑ∏Ê°Ü
+	private Canvas mCanvas;
+	private Paint mPaint;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState)
@@ -42,13 +58,14 @@ public class MainActivity extends Activity implements OnClickListener
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_main);
 
+		mContext = this;
+
 		intiView();
 
 		initEvents();
 	}
 
 	/**
-	 * ≥ı ºªØ ¬º˛
 	 */
 	private void initEvents()
 	{
@@ -58,7 +75,6 @@ public class MainActivity extends Activity implements OnClickListener
 	}
 
 	/**
-	 * ≥ı ºªØøÿº˛
 	 */
 	private void intiView()
 	{
@@ -75,7 +91,6 @@ public class MainActivity extends Activity implements OnClickListener
 		// TODO Auto-generated method stub
 		if (resultCode == RESULT_OK)
 		{
-			//  «—°‘Ò’’∆¨µƒcode
 			if (requestCode == PICK_PHOTO_CODE)
 			{
 				if (data != null)
@@ -84,8 +99,7 @@ public class MainActivity extends Activity implements OnClickListener
 
 					try
 					{
-						mPhotoImage = MediaStore.Images.Media.getBitmap(
-								this.getContentResolver(), uri);
+						mPhotoImage = MediaStore.Images.Media.getBitmap(this.getContentResolver(), uri);
 					}
 					catch (FileNotFoundException e1)
 					{
@@ -141,7 +155,6 @@ public class MainActivity extends Activity implements OnClickListener
 	}
 
 	/**
-	 * ∞¥º¸œÏ”¶
 	 * 
 	 * @param arg0
 	 */
@@ -153,16 +166,29 @@ public class MainActivity extends Activity implements OnClickListener
 		{
 		case R.id.getImage:
 			Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+			// Intent intent = new Intent(Intent.ACTION_PICK);
 			intent.setType("image/*");
 			startActivityForResult(intent, PICK_PHOTO_CODE);
 			break;
 		case R.id.detect:
+			ProgressDialog pdDialog = new ProgressDialog(mContext);
+			pdDialog.setTitle("Ê≠£Âú®Ê£ÄÊµã....");
+			pdDialog.setCancelable(true);
+			pdDialog.setCanceledOnTouchOutside(false);
+			pdDialog.setOnDismissListener(new OnDismissListener()
+			{
+
+				@Override
+				public void onDismiss(DialogInterface dialog)
+				{
+					// TODO Auto-generated method stub
+
+				}
+			});
 			FaceDetect faceDetect = new FaceDetect();
 			faceDetect.detect(mPhotoImage, new Callback()
 			{
 
-				// success fail »‘»ª «‘⁄◊”œﬂ≥Ã÷–÷¥––µƒ À˘“‘’‚¿Ô»Áπ˚∏¸–¬UI
-				// “ª∂®ªπ «“™ΩË÷˙handler
 				@Override
 				public void success(JSONObject jsonObject)
 				{
@@ -194,13 +220,80 @@ public class MainActivity extends Activity implements OnClickListener
 		{
 			if (msg.what == DETECT_SUCCESS)
 			{
-
+				JSONObject resultJson = (JSONObject) msg.obj;
+				L.i(resultJson.toString());
+				tv_state.setText("click to detect===>");
+				prepareBitmap(resultJson);
+				mPhoto.setImageBitmap(mPhotoImage);
 			}
 			else if (msg.what == DETECT_FAIL)
 			{
 
 			}
-		};
+		}
+
+	};
+
+	private void prepareBitmap(JSONObject resultJson)
+	{
+		// TODO Auto-generated method stub
+		// Ëß£ÊûêjsonÊï∞ÊçÆ
+		int age = 0;
+		String gender;
+		float centerX;
+		float centerY;
+		float centerW;
+		float centerH;
+
+		Bitmap bm = Bitmap.createBitmap(mPhotoImage.getWidth(), mPhotoImage.getHeight(), mPhotoImage.getConfig());
+		mCanvas = new Canvas(bm);
+		mPaint = new Paint();
+		mPaint.setColor(Color.WHITE);
+		mPaint.setStrokeWidth(3);
+
+		mCanvas.drawBitmap(mPhotoImage, 0, 0, null);
+
+		try
+		{
+			JSONArray faces = resultJson.getJSONArray("face");
+			int faceCount = faces.length();
+			for (int i = 0; i < faces.length(); i++)
+			{
+				JSONObject face = faces.getJSONObject(i);
+				age = (Integer) face.getJSONObject("attribute").getJSONObject("age").get("value");
+				gender = (String) face.getJSONObject("attribute").getJSONObject("gender").get("value");
+				centerX = (float) face.getJSONObject("position").getJSONObject("center").getDouble("x");
+				centerY = (float) face.getJSONObject("position").getJSONObject("center").getDouble("y");
+				centerW = (float) face.getJSONObject("position").getDouble("width");
+				centerH = (float) face.getJSONObject("position").getDouble("height");
+
+				// Ê†πÊçÆcenterX ÂíåcenterY ÊãøÂà∞Ëøô‰∏™ÁÇπÂØπÂ∫îÁöÑÂú®ÂõæÁâá‰∏≠ÁúüÊòØ‰ΩçÁΩÆ, ‰πüÂ∞±ÊòØdp
+				centerX = centerX * mPhotoImage.getWidth() / 100;
+				centerY = centerY * mPhotoImage.getHeight() / 100;
+				centerW = centerW * mPhotoImage.getWidth() / 100;
+				centerH = centerH * mPhotoImage.getHeight() / 100;
+
+				// Áîª‰∫∫ËÑ∏box
+				// ‰∏äÈù¢‰∏ÄÊù°Ê®™Á∫ø
+				mCanvas.drawLine(centerX - centerW / 2, centerY - centerH / 2, centerX + centerW / 2, centerY - centerH / 2, mPaint);
+				// Â∑¶ËæπÁ´ñÁ∫ø
+				mCanvas.drawLine(centerX - centerW / 2, centerY - centerH / 2, centerX - centerW / 2, centerY + centerH / 2, mPaint);
+				// Âè≥ËæπÁ´ñÁ∫ø
+				mCanvas.drawLine(centerX + centerW / 2, centerY - centerH / 2, centerX + centerW / 2, centerY + centerH / 2, mPaint);
+
+				mCanvas.drawLine(centerX - centerW / 2, centerY + centerH / 2, centerX + centerW / 2, centerY + centerH / 2, mPaint);
+
+				mPhotoImage = bm;
+
+			}
+		}
+		catch (JSONException e)
+		{
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			L.i(e.toString());
+		}
+
 	};
 
 }
