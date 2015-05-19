@@ -42,7 +42,8 @@ public class MainActivity extends Activity implements OnClickListener
 	private Button btn_detect;
 	private TextView tv_state;
 	private ImageView mPhoto;//
-	private Bitmap mPhotoImage;//
+	private Bitmap mPhotoImage;// 从本地得到的图片
+	private Bitmap mPhotoImageDetected;// 检测之后,重绘的图片
 	private String mCurrentPhotoString;
 
 	private Context mContext;
@@ -65,6 +66,8 @@ public class MainActivity extends Activity implements OnClickListener
 		intiView();
 
 		initEvents();
+
+		toastMgr.builder.display("oncreate", 1);
 	}
 
 	/**
@@ -102,6 +105,7 @@ public class MainActivity extends Activity implements OnClickListener
 					try
 					{
 						mPhotoImage = MediaStore.Images.Media.getBitmap(this.getContentResolver(), uri);
+						mPhotoImageDetected = mPhotoImage;
 					}
 					catch (FileNotFoundException e1)
 					{
@@ -215,12 +219,15 @@ public class MainActivity extends Activity implements OnClickListener
 			if (msg.what == DETECT_SUCCESS)
 			{
 				pdDialog.dismiss();
-				toastMgr.builder.display("检测成功", 1);
+
 				JSONObject resultJson = (JSONObject) msg.obj;
 				L.i(resultJson.toString());
 				tv_state.setText("click to detect===>");
 				prepareBitmap(resultJson);
-				mPhoto.setImageBitmap(mPhotoImage);
+				// mPhotoImage是原始图片,不做修改 mPhotoImageDetected是修改的图片
+				// 因为如果用户再一次点击检测,就会在原始图片的基础上画一次
+				mPhoto.setImageBitmap(mPhotoImageDetected);
+				toastMgr.builder.displayCenter("检测成功", 1);
 			}
 			else if (msg.what == DETECT_FAIL)
 			{
@@ -280,7 +287,7 @@ public class MainActivity extends Activity implements OnClickListener
 
 				mCanvas.drawLine(centerX - centerW / 2, centerY + centerH / 2, centerX + centerW / 2, centerY + centerH / 2, mPaint);
 
-				mPhotoImage = bm;
+				mPhotoImageDetected = bm;
 
 			}
 		}
