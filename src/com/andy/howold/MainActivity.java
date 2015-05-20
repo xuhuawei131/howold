@@ -3,12 +3,19 @@ package com.andy.howold;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 
+import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import android.app.Activity;
+import android.app.ProgressDialog;
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -21,6 +28,8 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 import com.andy.howold.FaceDetect.Callback;
+import com.andy.utils.L;
+import com.andy.utils.toastMgr;
 import com.facepp.error.FaceppParseException;
 
 public class MainActivity extends Activity implements OnClickListener
@@ -33,8 +42,18 @@ public class MainActivity extends Activity implements OnClickListener
 	private Button btn_detect;
 	private TextView tv_state;
 	private ImageView mPhoto;//
-	private Bitmap mPhotoImage;// ͼƬ
+	private Bitmap mPhotoImage;// 从本地得到的图片
+	private Bitmap mPhotoImageDetected;// 检测之后,重绘的图片
 	private String mCurrentPhotoString;
+
+	private Context mContext;
+
+	// 在bitmap上画人脸框
+	private Canvas mCanvas;
+	private Paint mPaint;
+
+	// 检测进度条
+	private ProgressDialog pdDialog;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState)
@@ -42,13 +61,16 @@ public class MainActivity extends Activity implements OnClickListener
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_main);
 
+		mContext = this;
+
 		intiView();
 
 		initEvents();
+
+		toastMgr.builder.display("oncreate", 1);
 	}
 
 	/**
-	 * ��ʼ���¼�
 	 */
 	private void initEvents()
 	{
@@ -58,7 +80,6 @@ public class MainActivity extends Activity implements OnClickListener
 	}
 
 	/**
-	 * ��ʼ���ؼ�
 	 */
 	private void intiView()
 	{
@@ -75,7 +96,6 @@ public class MainActivity extends Activity implements OnClickListener
 		// TODO Auto-generated method stub
 		if (resultCode == RESULT_OK)
 		{
-			// ��ѡ����Ƭ��code
 			if (requestCode == PICK_PHOTO_CODE)
 			{
 				if (data != null)
@@ -84,8 +104,8 @@ public class MainActivity extends Activity implements OnClickListener
 
 					try
 					{
-						mPhotoImage = MediaStore.Images.Media.getBitmap(
-								this.getContentResolver(), uri);
+						mPhotoImage = MediaStore.Images.Media.getBitmap(this.getContentResolver(), uri);
+						mPhotoImageDetected = mPhotoImage;
 					}
 					catch (FileNotFoundException e1)
 					{
@@ -141,7 +161,6 @@ public class MainActivity extends Activity implements OnClickListener
 	}
 
 	/**
-	 * ������Ӧ
 	 * 
 	 * @param arg0
 	 */
@@ -153,16 +172,21 @@ public class MainActivity extends Activity implements OnClickListener
 		{
 		case R.id.getImage:
 			Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+			// Intent intent = new Intent(Intent.ACTION_PICK);
 			intent.setType("image/*");
 			startActivityForResult(intent, PICK_PHOTO_CODE);
 			break;
 		case R.id.detect:
+			pdDialog = new ProgressDialog(mContext);
+			pdDialog.setTitle("正在检测....");
+			pdDialog.setCancelable(false);// 不可取消
+			pdDialog.setCanceledOnTouchOutside(false);
+			pdDialog.show();
+
 			FaceDetect faceDetect = new FaceDetect();
 			faceDetect.detect(mPhotoImage, new Callback()
 			{
 
-				// success fail ��Ȼ�������߳���ִ�е� ���������������UI
-				// һ������Ҫ����handler
 				@Override
 				public void success(JSONObject jsonObject)
 				{
@@ -194,13 +218,86 @@ public class MainActivity extends Activity implements OnClickListener
 		{
 			if (msg.what == DETECT_SUCCESS)
 			{
+				pdDialog.dismiss();
 
+				JSONObject resultJson = (JSONObject) msg.obj;
+				L.i(resultJson.toString());
+				tv_state.setText("click to detect===>");
+				prepareBitmap(resultJson);
+				// mPhotoImage是原始图片,不做修改 mPhotoImageDetected是修改的图片
+				// 因为如果用户再一次点击检测,就会在原始图片的基础上画一次
+				mPhoto.setImageBitmap(mPhotoImageDetected);
+				toastMgr.builder.displayCenter("检测成功", 1);
 			}
 			else if (msg.what == DETECT_FAIL)
 			{
+				pdDialog.dismiss();
+				toastMgr.builder.display("检测失败", 1);
+			}
+		}
+
+	};
+
+	private void prepareBitmap(JSONObject resultJson)
+	{
+		// TODO Auto-generated method stub
+		// 解析json数据
+		int age = 0;
+		String gender;
+		float centerX;
+		float centerY;
+		float centerW;
+		float centerH;
+
+		Bitmap bm = Bitmap.createBitmap(mPhotoImage.getWidth(), mPhotoImage.getHeight(), mPhotoImage.getConfig());
+		mCanvas = new Canvas(bm);
+		mPaint = new Paint();
+		mPaint.setColor(Color.WHITE);
+		mPaint.setStrokeWidth(3);
+
+		mCanvas.drawBitmap(mPhotoImage, 0, 0, null);
+
+		try
+		{
+			JSONArray faces = resultJson.getJSONArray("face");
+			int faceCount = faces.length();
+			for (int i = 0; i < faces.length(); i++)
+			{
+				JSONObject face = faces.getJSONObject(i);
+				age = (Integer) face.getJSONObject("attribute").getJSONObject("age").get("value");
+				gender = (String) face.getJSONObject("attribute").getJSONObject("gender").get("value");
+				centerX = (float) face.getJSONObject("position").getJSONObject("center").getDouble("x");
+				centerY = (float) face.getJSONObject("position").getJSONObject("center").getDouble("y");
+				centerW = (float) face.getJSONObject("position").getDouble("width");
+				centerH = (float) face.getJSONObject("position").getDouble("height");
+
+				// 根据centerX 和centerY 拿到这个点对应的在图片中真是位置, 也就是dp
+				centerX = centerX * mPhotoImage.getWidth() / 100;
+				centerY = centerY * mPhotoImage.getHeight() / 100;
+				centerW = centerW * mPhotoImage.getWidth() / 100;
+				centerH = centerH * mPhotoImage.getHeight() / 100;
+
+				// 画人脸box
+				// 上面一条横线
+				mCanvas.drawLine(centerX - centerW / 2, centerY - centerH / 2, centerX + centerW / 2, centerY - centerH / 2, mPaint);
+				// 左边竖线
+				mCanvas.drawLine(centerX - centerW / 2, centerY - centerH / 2, centerX - centerW / 2, centerY + centerH / 2, mPaint);
+				// 右边竖线
+				mCanvas.drawLine(centerX + centerW / 2, centerY - centerH / 2, centerX + centerW / 2, centerY + centerH / 2, mPaint);
+
+				mCanvas.drawLine(centerX - centerW / 2, centerY + centerH / 2, centerX + centerW / 2, centerY + centerH / 2, mPaint);
+
+				mPhotoImageDetected = bm;
 
 			}
-		};
+		}
+		catch (JSONException e)
+		{
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			L.i(e.toString());
+		}
+
 	};
 
 }

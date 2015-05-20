@@ -19,7 +19,8 @@
         android:layout_above="@+id/getImage"
         android:layout_alignParentLeft="true"
         android:layout_alignParentRight="true"
-        android:layout_alignParentTop="true" />
+        android:layout_alignParentTop="true" 
+        android:background="@drawable/t4"/>
 
     <Button
         android:id="@+id/detect"
